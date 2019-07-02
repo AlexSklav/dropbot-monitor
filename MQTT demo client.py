@@ -25,7 +25,7 @@ from logging_helpers import _L
 
 
 def dump(message, *args, **kwargs):
-    print('\r%-80s' % ('%s args: `%s` kwargs: `%s`' % (message, args, kwargs)),
+    print('\r%-150s' % ('%s args: `%s` kwargs: `%s`' % (message, args, kwargs)),
           end='')
     
     
@@ -42,9 +42,9 @@ def on_message(client, userdata, message):
     '''
     try:
         payload = json.loads(message.payload)
-        print('\r%-80s' % ('message (%s)@%s: `%s`' % (message.topic,
-                                                      message.qos,
-                                                      payload)),
+        print('\r%-150s' % ('message (%s)@%s: `%s`' % (message.topic,
+                                                       message.qos,
+                                                       payload)),
               end='')
     except Exception:
         _L().error('Error: message=`%s`', message.payload, exc_info=True)
@@ -64,7 +64,7 @@ def on_connect(client, userdata, flags, rc):
         The connection result
     '''
     dump('[CONNECT]', client, userdata, flags, rc)
-    client.subscribe('/#')
+    client.subscribe('/signal/#')
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -75,5 +75,6 @@ client.on_message = on_message
 client.connect_async('localhost')
 client.loop_start()
 # -
-
-
+payload = {"foobar": "hello, world!",
+           "timestamp": dt.datetime.now().isoformat()}
+client.publish('/signal-send/foo', payload=json.dumps(payload))
