@@ -1,0 +1,9 @@
+dist/
+.sconsign.dblite
+build/
+*.pyc
+*.o
+*.egg-info
+.idea
+*.pyc
+.ipynb_checkpoints
