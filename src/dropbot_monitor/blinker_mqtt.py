@@ -1,10 +1,13 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
-import json
 
 from logging_helpers import _L
+import json_tricks as json
+import trollius as asyncio
+
 
 __all__ = ['bind', 'unbind']
+
 
 def bind(signals, paho_client, connect_topic='/signal',
          send_topic='/signal-send'):
@@ -50,13 +53,14 @@ def bind(signals, paho_client, connect_topic='/signal',
         return signal
 
     def bind_signal(signal, name):
+        @asyncio.coroutine
         def mqtt_publish(sender_name, **payload):
             # Connect callback to `signal` -> publish to MQTT `connect_topic`
             topic = '/'.join([connect_topic.rstrip('/'), name])
 
             try:
                 payload['__sender__'] = sender_name
-                message = json.dumps(payload)
+                message = json.dumps(payload, default=lambda o: '<not serializable>')
                 paho_client.publish(topic, payload=message)
             except Exception:
                 _L().error('error publishing message; payload=`%s`, '

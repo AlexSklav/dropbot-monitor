@@ -5,3 +5,4 @@ __version__ = get_versions()['version']
 del get_versions
 
 from .blinker_mqtt import *
+from .mqtt_async import *
