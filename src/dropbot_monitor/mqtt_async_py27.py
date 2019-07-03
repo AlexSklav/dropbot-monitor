@@ -1,5 +1,7 @@
+import functools as ft
 import json
 
+from logging_helpers import _L
 import json_tricks as jt
 import trollius as asyncio
 
@@ -50,3 +52,14 @@ def wait_for_result(client, verb, prefix, name, *args, **kwargs):
     finally:
         client.message_callback_remove(sub='%s/result/%s' % (prefix, name))
     raise asyncio.Return(result.data)
+
+
+def catch_cancel(f, message=None):
+    @ft.wraps(f)
+    @asyncio.coroutine
+    def _wrapped(*args):
+        try:
+            yield asyncio.From(f(*args))
+        except asyncio.CancelledError:
+            _L().info(message or 'Coroutine cancelled.')
+    return _wrapped

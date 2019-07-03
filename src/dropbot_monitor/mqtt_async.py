@@ -8,4 +8,4 @@ else:
     import asyncio
 
 
-__all__ = ['wait_for_result', 'asyncio']
+__all__ = ['wait_for_result', 'catch_cancel', 'asyncio']

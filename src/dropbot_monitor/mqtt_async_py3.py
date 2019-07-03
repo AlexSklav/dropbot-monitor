@@ -59,3 +59,13 @@ async def wait_for_result(client, verb, prefix, name, *args, **kwargs):
         client.message_callback_remove(sub=topic)
         logger.debug('detached callback from topic: `%s`', topic)
     return result.data
+
+
+def catch_cancel(f, message=None):
+    @ft.wraps(f)
+    async def _wrapped(*args):
+        try:
+            await f(*args)
+        except asyncio.CancelledError:
+            _L().info(message or 'Coroutine cancelled.')
+    return _wrapped
