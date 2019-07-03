@@ -19,7 +19,8 @@ import logging
 import dropbot as db
 import dropbot_monitor as dbm
 import dropbot_monitor.mqtt_proxy
-import trollius as asyncio
+from dropbot_monitor import asyncio
+from imp import reload
 reload(dbm)
 reload(dbm.mqtt_proxy)
 
