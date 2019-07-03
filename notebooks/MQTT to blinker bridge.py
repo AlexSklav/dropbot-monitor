@@ -45,6 +45,8 @@ logging.basicConfig(level=logging.INFO)
 monitor_task = dbm.mqtt_bridge.monitor(client)
 # -
 
+monitor_task.connected.wait()
+
 loop = asyncio.get_event_loop()
 loop.run_until_complete(monitor_task.property('voltage', 80))
 loop.run_until_complete(monitor_task.property('voltage'))

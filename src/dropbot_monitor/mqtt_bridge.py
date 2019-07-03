@@ -138,9 +138,12 @@ def monitor(client):
         monitor_task.property = ft.partial(wait_for_result, client, 'property',
                                            prefix)
         monitor_task.call = ft.partial(wait_for_result, client, 'call', prefix)
+        monitor_task.connected.set()
 
     @asyncio.coroutine
     def _on_dropbot_disconnected(sender, **message):
+        monitor_task.connected.clear()
+        monitor_task.dropbot = None
         unbind(signals)
         client.publish('/dropbot/%(uuid)s/properties' %
                        {'uuid': monitor_task.device_id}, payload=None, qos=1,
@@ -158,6 +161,7 @@ def monitor(client):
         monitor_task.cancel()
 
     monitor_task = cancellable(catch_cancel(db.monitor.monitor))
+    monitor_task.connected = threading.Event()
     thread = threading.Thread(target=monitor_task, args=(signals, ))
     thread.daemon = True
     thread.start()
