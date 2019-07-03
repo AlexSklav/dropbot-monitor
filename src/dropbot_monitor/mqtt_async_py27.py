@@ -15,12 +15,11 @@ def wait_for_result(client, verb, prefix, name, *args, **kwargs):
     >>> # bind MQTT client to DropBot monitor blinker signals namespace...
     >>> ...
     >>> prefix = '/dropbot/' + str(dropbot.uuid)
-    >>> get = ft.partial(wait_for_result, client, 'get', prefix)
     >>> call = ft.partial(wait_for_result, client, 'call', prefix)
-    >>> set_ = ft.partial(wait_for_result, client, 'set', prefix)
+    >>> property = ft.partial(wait_for_result, client, 'property', prefix)
     >>> ...
     >>> loop = asyncio.get_event_loop()
-    >>> loop.run_until_complete(set_('voltage', 80))
+    >>> loop.run_until_complete(property('voltage', 80))
     '''
     loop = asyncio.get_event_loop()
 
