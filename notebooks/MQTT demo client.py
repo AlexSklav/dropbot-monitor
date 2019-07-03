@@ -42,10 +42,12 @@ def dump(message, *args, **kwargs):
                                                         kwargs)), end='')
 
 
-def on_message(client, userdata, message):
+def on_message(name, signals, client, userdata, message):
     '''
     Parameters
     ----------
+    name : str
+    signals : blinker.Namespace
     client : paho.mqtt.client.Client
         The client instance for this callback
     userdata
@@ -56,17 +58,17 @@ def on_message(client, userdata, message):
     match = cre_properties.match(message.topic)
     if match:
         uuid_ = match.group('uuid')
-        prefix = '/dropbot/' + uuid_
+        prefix = '/%s/%s' % (name, uuid_)
         if message.payload:
-            print('connect to prefix: %s' % uuid_)
+            _L().debug('connect to prefix: %s', uuid_)
             client.call = ft.partial(wait_for_result, client, 'call', prefix)
             client.property = ft.partial(wait_for_result, client, 'property',
                                          prefix)
+            client.connected.set()
         else:
-            print('disconnect from prefix: %s' % uuid_)
-            client.get = None
+            _L().debug('disconnect from prefix: %s', uuid_)
             client.call = None
-            client.set_ = None
+            client.property = None
         return
     
     try:
@@ -77,13 +79,14 @@ def on_message(client, userdata, message):
     match = cre_topic.match(message.topic)
     if match:
         uuid_, signalname = match.groups()
-        signals.signal(signalname).send('dropbot-%s' % uuid_, **payload)
+        signals.signal(signalname).send('%s-%s' % (name, uuid_), **payload)
     
 
-def on_connect(client, userdata, flags, rc):
+def on_connect(name, client, userdata, flags, rc):
     '''
     Parameters
     ==========
+    name : str
     client : paho.mqtt.client.Client
         The client instance for this callback
     userdata
@@ -91,23 +94,27 @@ def on_connect(client, userdata, flags, rc):
     flags : dict
         Response flags sent by the broker
     rc : int
+\begin{definition}\label{def:}
+
+\end{definition}
         The connection result
     '''
-    dump('[CONNECT]', client, userdata, flags, rc)
-    client.subscribe('/dropbot/+/#')
+    if rc == 0:
+        _L().debug('connected')
+        client.subscribe('/%s/+/#' % name)
+        
 
-logging.basicConfig(level=logging.DEBUG)
-
-signals = blinker.Namespace()
-
-client = Client(client_id='MicroDrop 1')
-client.on_connect = on_connect
-client.on_disconnect = ft.partial(dump, '[DISCONNECT]')
-client.on_message = on_message
-client.connect_async('localhost')
-client.loop_start()
+def get_client(name, signals, *args, **kwargs):
+    client = Client(*args, **kwargs)
+    client.connected = threading.Event()
+    client.on_connect = ft.partial(on_connect, name)
+    client.on_disconnect = ft.partial(lambda *args, **kwargs:
+                                      logging.debug('disconnected'))
+    client.on_message = ft.partial(on_message, 'dropbot', signals)
+    return client
 # + {}
 import inspect
+import threading
 
 import dropbot as db
 import trollius as asyncio
@@ -142,6 +149,19 @@ class MqttProxy(object):
                     _wrapped.__doc__ = attr.__doc__
                     return _wrapped
                 super(MqttProxy, self).__setattr__(k, get_wrapped(k, attr))
+    
+    @classmethod
+    def from_uri(self, cls, name, host, *args, **kwargs):
+        async_ = kwargs.pop('async_', False)
+        signals = blinker.Namespace()
+        client = get_client(name, signals, *args, **kwargs)
+        client.connect_async(host)
+        client.loop_start()
+        client.signals = signals
+        client.connected.wait()
+        proxy = MqttProxy(cls, client, async_=async_)
+        super(MqttProxy, proxy).__setattr__('_owns_client', True)
+        return proxy
         
     def __setattr__(self, name, value):
         if name not in self._properties:
@@ -158,22 +178,33 @@ class MqttProxy(object):
         
     def __dir__(self):
         return dir(self.cls)
+    
+    def __stop__(self):
+        self.__client__.disconnect()
+        self.__client__.loop_stop()
+        _L().debug('stopped client loop')
+    
+    def __start__(self):
+        self.__client__.loop_start()
+        _L().debug('started client loop')
+        
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.__stop__()
 
 
 # +
-proxy = MqttProxy(db.proxy_py2.SerialProxy, client, async_=False)
+logging.basicConfig(level=logging.DEBUG)
 
-proxy.voltage = 80
-display(proxy.voltage)
-display(proxy.measure_voltage())
-proxy.voltage = 105
-display(proxy.voltage)
-proxy.measure_voltage()
-# -
-
-aproxy = MqttProxy(db.proxy.Proxy, client, async_=True)
-
-loop = asyncio.get_event_loop()
+with MqttProxy.from_uri(db.proxy.Proxy, 'dropbot', 'localhost') as proxy:
+    proxy.voltage = 80
+    display(proxy.voltage)
+    display(proxy.measure_voltage())
+    proxy.voltage = 105
+    display(proxy.voltage)
+    proxy.measure_voltage()
 
 
 # +
@@ -183,9 +214,11 @@ def demo(value):
                        .update_state(capacitance_update_interval_ms=value))
     result = yield asyncio.From(aproxy.state)
     raise asyncio.Return(result)
+    
+    
+loop = asyncio.get_event_loop()
 
-display(loop.run_until_complete(demo(500)))
-display(loop.run_until_complete(demo(0)))
-# -
-
-client.loop_stop()
+with MqttProxy.from_uri(db.proxy.Proxy, 'dropbot', 'localhost',
+                        async_=True) as aproxy:
+    display(loop.run_until_complete(demo(500)))
+    display(loop.run_until_complete(demo(0)))
