@@ -14,7 +14,9 @@
 # ---
 
 # +
+import sys
 import logging
+print(sys.version)
 
 import dropbot as db
 import dropbot_monitor as dbm

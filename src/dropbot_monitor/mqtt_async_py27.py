@@ -61,5 +61,5 @@ def catch_cancel(f, message=None):
         try:
             yield asyncio.From(f(*args))
         except asyncio.CancelledError:
-            _L().info(message or 'Coroutine cancelled.')
+            _L().debug(message or 'Coroutine cancelled.')
     return _wrapped

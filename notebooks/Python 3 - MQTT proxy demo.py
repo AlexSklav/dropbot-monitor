@@ -19,7 +19,6 @@ import nest_asyncio
 nest_asyncio.apply()
 
 import sys
-print(sys.executable)
 print(sys.version)
 
 import logging
