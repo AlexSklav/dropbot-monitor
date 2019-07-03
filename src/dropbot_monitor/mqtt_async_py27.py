@@ -22,25 +22,25 @@ def wait_for_result(client, verb, prefix, name, *args, **kwargs):
     >>> loop.run_until_complete(property('voltage', 80))
     '''
     loop = asyncio.get_event_loop()
-
     result = asyncio.Event()
 
-    def on_done(client, userdata, message):
+    def on_received(client, userdata, message):
         try:
             payload = message.payload or 'null'
             result.data = jt.loads(payload)
         except Exception:
             result.data = json.loads(payload)
             try:
-                module = __import__('.'.join(result.data['__instance_type__'][:-1]))
-                cls = getattr(module, result.data['__instance_type__'][-1])
+                module_name = '.'.join(result.data['__instance_type__'][:-1])
+                class_name = result.data['__instance_type__'][-1]
+                module = __import__(module_name)
+                cls = getattr(module, class_name)
                 result.data = cls(**result.data['attributes'])
             except Exception:
                 pass
-
         loop.call_soon_threadsafe(result.set)
 
-    client.message_callback_add('%s/result/%s' % (prefix, name), on_done)
+    client.message_callback_add('%s/result/%s' % (prefix, name), on_received)
 
     try:
         payload = jt.dumps({'args': args, 'kwargs': kwargs})
