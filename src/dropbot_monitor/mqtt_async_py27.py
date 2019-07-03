@@ -1,3 +1,5 @@
+import json
+
 import json_tricks as jt
 import trollius as asyncio
 
@@ -25,7 +27,18 @@ def wait_for_result(client, verb, prefix, name, *args, **kwargs):
     result = asyncio.Event()
 
     def on_done(client, userdata, message):
-        result.data = jt.loads(message.payload or 'null')
+        try:
+            payload = message.payload or 'null'
+            result.data = jt.loads(payload)
+        except Exception:
+            result.data = json.loads(payload)
+            try:
+                module = __import__('.'.join(result.data['__instance_type__'][:-1]))
+                cls = getattr(module, result.data['__instance_type__'][-1])
+                result.data = cls(**result.data['attributes'])
+            except Exception:
+                pass
+
         loop.call_soon_threadsafe(result.set)
 
     client.message_callback_add('%s/result/%s' % (prefix, name), on_done)
