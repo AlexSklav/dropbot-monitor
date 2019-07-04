@@ -20,10 +20,15 @@ requirements:
     - python
 
   run:
+    - asyncio-helpers
     - blinker
+    - dropbot
+    - json-tricks
     - logging-helpers
     - paho-mqtt
+    - pandas
     - python
+    - trollius  # [py<34]
 
 test:
   imports:
