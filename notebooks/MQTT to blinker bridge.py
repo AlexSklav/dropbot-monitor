@@ -14,65 +14,42 @@
 # ---
 
 # +
-from __future__ import print_function
-import datetime as dt
-import functools as ft
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+from contextlib import closing
 import logging
-import sys
-# Enable `dropbot_monitor` import
-sys.path.insert(0, '../src')
 
-import blinker
-from dropbot_monitor import bind, unbind
-from paho.mqtt.client import Client, MQTTMessage
-
-
-def dump(message, *args, **kwargs):
-    print('\r%-150s' % ('%s args: `%s` kwargs: `%s`' % (message, args,
-                                                        kwargs)), end='')
-    
-
-def on_connect(client, userdata, flags, rc):
-    '''
-    Parameters
-    ==========
-    client : paho.mqtt.client.Client
-        The client instance for this callback
-    userdata
-        The private user data as set in Client() or userdata_set()
-    flags : dict
-        Response flags sent by the broker
-    rc : int
-        The connection result
-    '''
-    client.subscribe('/#')
-
+from dropbot import EVENT_ENABLE, EVENT_CHANNELS_UPDATED, EVENT_SHORTS_DETECTED
+import pandas as pd
+import trollius as asyncio
+import dropbot_monitor as dbm
+reload(dbm.mqtt_bridge)
 
 # +
 logging.basicConfig(level=logging.DEBUG)
 
-client = Client(client_id='DropBot MQTT bridge')
-client.on_connect = on_connect
-client.on_disconnect = ft.partial(dump, '[DISCONNECT]')
-client.on_message = ft.partial(dump, '[MESSAGE]')
-client.connect_async('localhost')
-client.loop_start()
+with closing(dbm.monitor()) as monitor_task:
+    display(monitor_task.signals)
+    monitor_task.connected.wait()
 
-signals = blinker.Namespace()
-signal = signals.signal('foo')
-# signal.connect(dump)
-# -
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(monitor_task.property('voltage', 80))
+    display(loop.run_until_complete(monitor_task.property('voltage')))
 
-bind(signals=signals, paho_client=client)
-# unbind(signals)
-
-signal = signals.signal('bar')
-# signal.connect(dump)
-
-payload = {"foobar": "hello, world!",
-           "timestamp": dt.datetime.now().isoformat()}
-# client.publish('/signal-send/foo', payload=json.dumps(payload));
-client.publish('/signal/foo', payload=json.dumps(payload));
-
-# signal.send(client._client_id, blah='hello, %s!' % dt.datetime.now().isoformat());
-signals.signal('bar').send('DropBot', blah='hello, %s!' % dt.datetime.now().isoformat());
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(monitor_task.call('update_state',
+                                              capacitance_update_interval_ms=0,
+                                              hv_output_selected=True,
+                                              hv_output_enabled=True,
+                                              voltage=90,
+                                              event_mask=EVENT_CHANNELS_UPDATED |
+                                              EVENT_SHORTS_DETECTED |
+                                              EVENT_ENABLE))
+    # loop.run_until_complete(monitor_task.call('update_state',
+    #                                           capacitance_update_interval_ms=500))
+    loop.run_until_complete(monitor_task.call('set_state_of_channels',
+    #                                           pd.Series(1, index=[100]),
+                                              pd.Series(),
+                                              append=False))
+    states = loop.run_until_complete(monitor_task.property('state_of_channels'))
+    display(states[states > 0])

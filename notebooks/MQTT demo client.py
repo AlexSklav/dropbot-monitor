@@ -14,67 +14,43 @@
 # ---
 
 # +
-from __future__ import print_function
-import datetime as dt
-import functools as ft
-import json
+import sys
 import logging
+print(sys.version)
 
-from paho.mqtt.client import Client, MQTTMessage
-from logging_helpers import _L
+import dropbot as db
+import dropbot_monitor as dbm
+import dropbot_monitor.mqtt_proxy
+from dropbot_monitor import asyncio
+from imp import reload
+reload(dbm)
+reload(dbm.mqtt_proxy)
 
-
-def dump(message, *args, **kwargs):
-    print('\r%-150s' % ('%s args: `%s` kwargs: `%s`' % (message, args, kwargs)),
-          end='')
-    
-    
-def on_message(client, userdata, message):
-    '''
-    Parameters
-    ----------
-    client : paho.mqtt.client.Client
-        The client instance for this callback
-    userdata
-        The private user data as set in Client() or userdata_set()
-    message : paho.mqtt.client.MQTTMessage
-        This is a class with members topic, payload, qos, retain.
-    '''
-    try:
-        payload = json.loads(message.payload)
-        print('\r%-150s' % ('message (%s)@%s: `%s`' % (message.topic,
-                                                       message.qos,
-                                                       payload)),
-              end='')
-    except Exception:
-        _L().error('Error: message=`%s`', message.payload, exc_info=True)
-    
-
-def on_connect(client, userdata, flags, rc):
-    '''
-    Parameters
-    ==========
-    client : paho.mqtt.client.Client
-        The client instance for this callback
-    userdata
-        The private user data as set in Client() or userdata_set()
-    flags : dict
-        Response flags sent by the broker
-    rc : int
-        The connection result
-    '''
-    dump('[CONNECT]', client, userdata, flags, rc)
-    client.subscribe('/signal/#')
-
+# +
 logging.basicConfig(level=logging.DEBUG)
 
-client = Client(client_id='MicroDrop 1')
-client.on_connect = on_connect
-client.on_disconnect = ft.partial(dump, '[DISCONNECT]')
-client.on_message = on_message
-client.connect_async('localhost')
-client.loop_start()
-# -
-payload = {"foobar": "hello, world!",
-           "timestamp": dt.datetime.now().isoformat()}
-client.publish('/signal-send/foo', payload=json.dumps(payload))
+with dbm.mqtt_proxy.MqttProxy.from_uri(db.proxy.Proxy, 'dropbot',
+                                       'localhost') as proxy:
+    proxy.voltage = 80
+    display(proxy.voltage)
+    display(proxy.measure_voltage())
+    proxy.voltage = 105
+    display(proxy.voltage)
+    proxy.measure_voltage()
+
+
+# +
+@asyncio.coroutine
+def demo(value):
+    yield asyncio.From(aproxy
+                       .update_state(capacitance_update_interval_ms=value))
+    result = yield asyncio.From(aproxy.state)
+    raise asyncio.Return(result)
+    
+    
+loop = asyncio.get_event_loop()
+
+with dbm.mqtt_proxy.MqttProxy.from_uri(db.proxy.Proxy, 'dropbot', 'localhost',
+                                       async_=True) as aproxy:
+    display(loop.run_until_complete(demo(500)))
+    display(loop.run_until_complete(demo(0)))
