@@ -22,7 +22,7 @@ requirements:
   run:
     - asyncio-helpers
     - blinker
-    - dropbot >=1.73.2
+    - dropbot >=1.73.2,<2|>=2.4.1
     - json-tricks
     - logging-helpers
     - paho-mqtt

@@ -27,8 +27,10 @@ import dropbot as db
 import dropbot_monitor as dbm
 import dropbot_monitor.mqtt_proxy
 
-logging.basicConfig(level=logging.DEBUG)
-logging.getLogger('dropbot_monitor').setLevel(logging.INFO)
+logging.basicConfig(level=logging.INFO)
+# logging.getLogger('dropbot_monitor').setLevel(logging.INFO)
+# logging.getLogger('dropbot.proxy_py3.SerialProxy._send_command').setLevel(logging.INFO)
+# logging.getLogger('base_node_rpc._async_py36').setLevel(logging.INFO)
 
 # +
 # Create proxy instance with **asynchronous** API.
@@ -46,3 +48,12 @@ proxy.voltage = 50  # Using sync API
 display(proxy.voltage)  # Using sync API
 display(await aproxy.voltage)  # Using async API
 proxy.properties
+# -
+
+proxy.set
+
+proxy.state
+
+import pandas as pd
+
+proxy.set_state_of_channels(pd.Series(1, index=[0]), append=False)
