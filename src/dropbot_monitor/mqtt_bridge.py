@@ -4,6 +4,7 @@ from builtins import bytes
 import functools as ft
 import re
 import threading
+import time
 
 from asyncio_helpers import cancellable
 from base_node_rpc.async import asyncio
@@ -199,7 +200,10 @@ def monitor(client=None):
                                                        append=False)
             monitor_task.dropbot.update_state(capacitance_update_interval_ms=0,
                                               hv_output_enabled=False)
-        unbind(monitor_task.signals)
+        try:
+            unbind(monitor_task.signals)
+        except RuntimeError as e:
+            _L().warning('%s', e)
         monitor_task.cancel()
         if client_created:
             client.loop_stop()
@@ -214,3 +218,16 @@ def monitor(client=None):
     monitor_task.stop = stop
     monitor_task.close = stop
     return monitor_task
+
+
+if __name__ == '__main__':
+    import logging
+
+    logging.basicConfig(level=logging.INFO)
+    monitor_task = monitor()
+
+    try:
+        while True:
+            time.sleep(.25)
+    except KeyboardInterrupt:
+        monitor_task.stop()
