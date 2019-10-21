@@ -140,7 +140,7 @@ class MqttProxy(object):
         client.loop_start()
         client.signals = signals
         client.connected.wait()
-        proxy = MqttProxy(cls, client, async_=async_)
+        proxy = self(cls, client, async_=async_)
         super(MqttProxy, proxy).__setattr__('_owns_client', True)
         return proxy
 
