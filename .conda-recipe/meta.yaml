@@ -25,9 +25,12 @@ requirements:
     - dropbot >=1.73.2,<2|>=2.4.1
     - json-tricks
     - logging-helpers
+    - matplotlib
+    - mistune
     - paho-mqtt
     - pandas
     - python
+    - si-prefix
     - trollius  # [py<34]
 
 test:
