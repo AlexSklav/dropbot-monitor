@@ -1,7 +1,7 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
+import functools as ft
 import logging
-import os
 import pkgutil
 import sys
 
@@ -18,7 +18,11 @@ import blinker
 import dropbot_monitor as dbm
 import jinja2
 import mistune
+import numpy as np
+import pandas as pd
 import si_prefix as si
+
+from ..invoker import Invoker
 
 
 class DropBotStatusLabel(QtWidgets.QLabel):
@@ -133,21 +137,20 @@ class DropBotSettings(QtWidgets.QWidget):
                                 voltage_spin_box)
         self.capacitance_label = QtWidgets.QLabel('-')
         self.voltage_label = QtWidgets.QLabel('-')
-        self.channels_label = QtWidgets.QLabel('-')
-        self.form_layout.addRow(QtWidgets.QLabel("Capacitance:"),
-                                self.capacitance_label)
         self.form_layout.addRow(QtWidgets.QLabel("Voltage:"),
                                 self.voltage_label)
-        self.form_layout.addRow(QtWidgets.QLabel("Actuated channels:"),
-                                self.channels_label)
+        self.form_layout.addRow(QtWidgets.QLabel("Capacitance:"),
+                                self.capacitance_label)
 
-        # self.formGroupBox.setLayout(self.form_layout)
-        # self.grid_layout.addWidget(self.formGroupBox, 0, 0)
         self.grid_layout.addLayout(self.form_layout, 0, 0)
         self.grid_layout.addWidget(self.dropbot_status, 0, 1)
         self.main_layout = QtWidgets.QGridLayout()
         self.formGroupBox.setLayout(self.grid_layout)
         self.main_layout.addWidget(self.formGroupBox, 0, 0)
+
+        self.channels_box = ChannelsGrid(signals, 'Channels:')
+        self.main_layout.addWidget(self.channels_box, 1, 0)
+
         self.setLayout(self.main_layout)
 
         def on_change(x):
@@ -157,11 +160,16 @@ class DropBotSettings(QtWidgets.QWidget):
         self.voltage_spin_box = voltage_spin_box
         signals.signal('dropbot.voltage').connect(self.on_voltage_changed)
         signals.signal('dropbot.tooltip').connect(self.on_tooltip)
+        signals.signal('actuate-channels').connect(self.on_actuate_channels)
 
         self.signals = signals
 
         connect_button.toggle()
         on_connect_clicked()
+
+    def on_actuate_channels(self, channels):
+        self.monitor_task.dropbot\
+            .set_state_of_channels(pd.Series(1, index=channels), append=False)
 
     def on_tooltip(self, sender, **kwargs):
         self.dropbot_status.setToolTip(mistune.markdown(kwargs['text']))
@@ -181,8 +189,7 @@ class DropBotSettings(QtWidgets.QWidget):
 
     @asyncio.coroutine
     def on_connected(self, sender, **message):
-        self.dropbot_status.connected = True
-        self.port_label.setText(message['dropbot'].port)
+        number_of_channels = message['dropbot'].number_of_channels
         message['dropbot'].update_state(capacitance_update_interval_ms=250,
                                         hv_output_selected=True,
                                         hv_output_enabled=True,
@@ -190,8 +197,15 @@ class DropBotSettings(QtWidgets.QWidget):
                                         event_mask=EVENT_CHANNELS_UPDATED |
                                         EVENT_SHORTS_DETECTED |
                                         EVENT_ENABLE)
-        self.voltage_spin_box.setValue(message['dropbot'].voltage)
-        self._update_tooltip(message['dropbot'])
+
+        def ui_code():
+            self.dropbot_status.connected = True
+            self.port_label.setText(message['dropbot'].port)
+            self.voltage_spin_box.setValue(message['dropbot'].voltage)
+            self._update_tooltip(message['dropbot'])
+            self.channels_box.count = number_of_channels
+
+        invoker.invoke(ui_code)
 
     def _update_tooltip(self, dropbot):
         template_str = pkgutil.get_data('dropbot_monitor.bin',
@@ -225,8 +239,10 @@ class DropBotSettings(QtWidgets.QWidget):
          - ``"start"``: ms counter before setting shift registers
          - ``"end"``: ms counter after setting shift registers
         '''
-        self.channels_label.setText(', '.join(str(c)
-                                              for c in message['actuated']))
+        def ui_code():
+            self.channels_box.actuated_channels = set(message['actuated'])
+
+        invoker.invoke(ui_code)
 
     @asyncio.coroutine
     def on_chip_inserted(self, sender, **message):
@@ -243,6 +259,77 @@ class DropBotSettings(QtWidgets.QWidget):
         return {self.layout.itemAt(i, QtWidgets.QFormLayout.LabelRole).widget()
                 .text(): self.layout.itemAt(i, QtWidgets.QFormLayout.FieldRole)
                 .widget() for i in range(self.layout.rowCount())}
+
+
+def greatest_factors(N):
+    '''Inspired by https://stackoverflow.com/a/28328782/345236'''
+    sqrt_floor = int(np.sqrt(N))
+
+    factor_a = sqrt_floor
+    while N // factor_a != N / factor_a:
+        factor_a -= 1
+    factor_b = N // factor_a
+    return tuple(sorted((factor_a, factor_b))[::-1])
+
+
+class ChannelsGrid(QtWidgets.QGroupBox):
+    GREY = '#f0f0f0'
+    # GREEN = '#008000'
+    GREEN = '#60bd68'
+
+    def __init__(self, signals, *args, **kwargs):
+        super(ChannelsGrid, self).__init__(*args, **kwargs)
+        self.signals = signals
+        # grid_layout = QtWidgets.QGridLayout()
+        # self.setLayout(grid_layout)
+
+    @property
+    def count(self):
+        return getattr(self, '_count', 0)
+
+    def _actuated(self, i):
+        return (self.layout().itemAt(i).widget().palette()
+                .color(QtGui.QPalette.Background) == self.GREEN)
+
+    @count.setter
+    def count(self, count_):
+        grid_layout = QtWidgets.QGridLayout()
+        self.setLayout(grid_layout)
+
+        rows, columns = greatest_factors(count_)
+        for i in range(rows):
+            for j in range(columns):
+                i_ = i * columns + j
+                button_ij = QtWidgets.QPushButton('%s' % i_)
+                button_ij.setMinimumSize(35, 25)
+
+                def on_click(i):
+                    actuated_channels = self.actuated_channels
+                    if i in actuated_channels:
+                        actuated_channels.remove(i)
+                    else:
+                        actuated_channels.add(i)
+                    self.signals.signal('actuate-channels')\
+                        .send(actuated_channels)
+
+                grid_layout.addWidget(button_ij, i, j)
+                button_ij.clicked.connect(ft.partial(on_click, i_))
+
+    @property
+    def actuated_channels(self):
+        grid_layout = self.layout()
+        return set([i for i in range(grid_layout.count())
+                    if self._actuated(i)])
+
+    @actuated_channels.setter
+    def actuated_channels(self, channels):
+        grid_layout = self.layout()
+        for i in range(grid_layout.count()):
+            button_i = grid_layout.itemAt(i).widget()
+            channel_i = int(button_i.text())
+            colour_i = self.GREEN if channel_i in channels else self.GREY
+            button_i.setStyleSheet('QPushButton { background-color: %s; }' %
+                                   colour_i)
 
 
 def main():
@@ -291,10 +378,13 @@ def main():
 
     @asyncio.coroutine
     def on_connected(sender, **message):
-        tray.showMessage('DropBot connected', 'Connected to DropBot on port %s'
-                         % message['dropbot'].port,
-                         tray.MessageIcon.Information)
-        tray.setToolTip('DropBot connected')
+        def ui_code():
+            tray.showMessage('DropBot connected', 'Connected to DropBot on '
+                             'port %s' % message['dropbot'].port,
+                             tray.MessageIcon.Information)
+            tray.setToolTip('DropBot connected')
+
+        invoker.invoke(ui_code)
 
     settings.monitor_task.signals.signal('connected')\
         .connect(on_connected, weak=False)
@@ -313,9 +403,13 @@ def main():
     @asyncio.coroutine
     def on_chip_inserted(sender, **message):
         tray_icon = get_icon('images/sci-bots-white-logo-chip-inserted.ico')
-        tray.setIcon(tray_icon)
         port = settings.monitor_task.dropbot.port
-        tray.setToolTip('DropBot connected (%s) - chip inserted' % port)
+
+        def ui_code():
+            tray.setIcon(tray_icon)
+            tray.setToolTip('DropBot connected (%s) - chip inserted' % port)
+
+        invoker.invoke(ui_code)
 
     settings.monitor_task.signals.signal('chip-inserted')\
         .connect(on_chip_inserted, weak=False)
@@ -338,4 +432,5 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     app = QtWidgets.QApplication(sys.argv)
     main()
+    invoker = Invoker()
     sys.exit(app.exec_())
