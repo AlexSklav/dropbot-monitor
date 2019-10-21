@@ -24,7 +24,15 @@ cre_properties = re.compile(r'^/[^/]+/(?P<uuid>[^/]+)/properties')
 
 
 def on_message(name, signals, client, userdata, message):
-    '''
+    '''MQTT client message callback.
+
+    Once a DropBot has published available properties, bind the ``call`` and
+    ``property`` methods of the client to respective coroutines targeting the
+    UUID of the DropBot.
+
+    Forward any message published to a ``signal`` topic to a corresponding
+    signal in the ``signals`` blinker namespace.
+
     Parameters
     ----------
     name : str
@@ -53,6 +61,7 @@ def on_message(name, signals, client, userdata, message):
             _L().debug('disconnect from prefix: %s', uuid_)
             client.call = None
             client.property = None
+            client.connected.clear()
         return
 
     try:
@@ -87,6 +96,9 @@ def on_connect(name, client, userdata, flags, rc):
 
 
 def get_client(name, signals, *args, **kwargs):
+    '''
+    Create a MQTT client and bind connect, disconnect, and message callbacks.
+    '''
     client = Client(*args, **kwargs)
     client.connected = threading.Event()
     client.on_connect = ft.partial(on_connect, name)
@@ -133,6 +145,25 @@ class MqttProxy(object):
 
     @classmethod
     def from_uri(self, cls, name, host, *args, **kwargs):
+        '''Construct a ``MqttProxy`` from a MQTT broker hostname.
+
+        Parameters
+        ----------
+        cls : class
+            Class type from which to extract properties and methods to expose.
+        name : str
+            Name of MQTT root topic to subscribe to, e.g., ``dropbot`` will
+            subscribe to ``/dropbot/+/#``.
+        host : str
+            Hostname to which MQTT client should connect, e.g., ``localhost``.
+        *args, **kwargs
+            Additional parameters passed to MQTT ``Client`` constructor.
+
+        Returns
+        -------
+        MqttProxy
+            Proxy to object exposed through MQTT.
+        '''
         async_ = kwargs.pop('async_', False)
         signals = blinker.Namespace()
         client = get_client(name, signals, *args, **kwargs)
@@ -140,17 +171,25 @@ class MqttProxy(object):
         client.loop_start()
         client.signals = signals
         client.connected.wait()
-        proxy = MqttProxy(cls, client, async_=async_)
+        proxy = self(cls, client, async_=async_)
         super(MqttProxy, proxy).__setattr__('_owns_client', True)
         return proxy
 
     def __setattr__(self, name, value):
+        '''
+        Set attribute on proxy object if applicable.
+
+        Otherwise, set on local object.
+        '''
         if name not in self._properties:
             return super(MqttProxy, self).__setattr__(name, value)
         else:
             return self._wrapper(self.__client__.property(name, value))
 
     def __getattr__(self, name):
+        '''
+        Get attribute from remote object through proxy.
+        '''
         return self._wrapper(self.__client__.property(name))
 
     def __dir__(self):

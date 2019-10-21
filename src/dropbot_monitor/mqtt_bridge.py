@@ -1,10 +1,13 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
+from builtins import bytes
 import functools as ft
 import re
 import threading
+import time
 
 from asyncio_helpers import cancellable
+from base_node_rpc.async import asyncio
 from dropbot import EVENT_ENABLE, EVENT_CHANNELS_UPDATED, EVENT_SHORTS_DETECTED
 from dropbot_monitor import bind, unbind, wait_for_result, catch_cancel
 from logging_helpers import _L
@@ -15,14 +18,34 @@ import dropbot.hardware_test
 import dropbot.monitor
 import json_tricks as jt
 import pandas as pd
-import trollius as asyncio
 
 # Prevent json_tricks Pandas dump/load warnings.
 jt.encoders.pandas_encode._warned = True
 jt.decoders.pandas_hook._warned = True
 
-
 __all__ = ['monitor']
+
+
+def bytes_to_str_encode(encoding='utf-8'):
+    '''
+    Returns a JSON encoder which decodes `bytes` instances to a unicode string.
+
+    Parameters
+    ----------
+    encoding : str, optional
+        Unicode encoding descriptor (default: ``utf-8``).
+
+    Returns
+    -------
+    function
+        JSON encoder function, compatible with, e.g.,
+        ``json_tricks.dumps(..., extra_obj_encoders=[])``.
+    '''
+    def _wrapped(obj, **kwargs):
+        if isinstance(obj, bytes):
+            return obj.decode(encoding)
+        return obj
+    return _wrapped
 
 
 def dump(message, *args, **kwargs):
@@ -46,6 +69,9 @@ def on_connect(client, userdata, flags, rc):
     client.subscribe('/#', qos=1)
 
 
+dumps_ = ft.partial(jt.dumps, extra_obj_encoders=(bytes_to_str_encode(), ))
+
+
 cre_topic = re.compile(r'^/(?P<device_name>[^/]+)/(?P<uuid>[^/]+)/'
                        r'(?P<type>signal|property|call|result)/'
                        r'(?P<name>[^/]+)$')
@@ -67,11 +93,11 @@ def on_message(device_name, client, userdata, message, proxy=None):
         if not message.payload:
             payload = {}
         else:
-            payload = jt.loads(message.payload)
+            payload = jt.loads(message.payload.decode('utf-8'))
     except Exception:
         logger.debug('could not decode JSON message=`%s`', message.payload,
                      exc_info=True)
-        payload = message.payload
+        payload = message.payload.decode('utf-8')
 
     match = cre_topic.match(message.topic)
     if match and match.group('device_name') == device_name:
@@ -91,13 +117,13 @@ def on_message(device_name, client, userdata, message, proxy=None):
                     _L().debug('call: name=`%s`, payload=`%s`', name, payload)
                     client.publish('/%s/%s/result/%s' % (device_name, uuid_,
                                                          name),
-                                   payload=jt.dumps(result))
+                                   payload=dumps_(result))
             elif type_ == 'property':
                 try:
                     args = payload.get('args', tuple(payload))
                     if not args:
                         value = getattr(proxy, name)
-                        payload = jt.dumps(value)
+                        payload = dumps_(value)
                     else:
                         setattr(proxy, name, args[0])
                         payload = None
@@ -174,7 +200,10 @@ def monitor(client=None):
                                                        append=False)
             monitor_task.dropbot.update_state(capacitance_update_interval_ms=0,
                                               hv_output_enabled=False)
-        unbind(monitor_task.signals)
+        try:
+            unbind(monitor_task.signals)
+        except RuntimeError as e:
+            _L().warning('%s', e)
         monitor_task.cancel()
         if client_created:
             client.loop_stop()
@@ -189,3 +218,16 @@ def monitor(client=None):
     monitor_task.stop = stop
     monitor_task.close = stop
     return monitor_task
+
+
+if __name__ == '__main__':
+    import logging
+
+    logging.basicConfig(level=logging.INFO)
+    monitor_task = monitor()
+
+    try:
+        while True:
+            time.sleep(.25)
+    except KeyboardInterrupt:
+        monitor_task.stop()

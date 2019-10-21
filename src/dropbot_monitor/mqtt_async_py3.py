@@ -1,3 +1,4 @@
+import functools as ft
 import json
 
 from logging_helpers import _L
