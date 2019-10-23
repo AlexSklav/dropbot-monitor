@@ -23,12 +23,14 @@ requirements:
     - asyncio-helpers
     - blinker
     - dropbot >=1.73.2,<2|>=2.4.1
+    - jinja2
     - json-tricks
     - logging-helpers
     - matplotlib
     - mistune
     - paho-mqtt
     - pandas
+    - pyside2
     - python
     - si-prefix
     - trollius  # [py<34]
