@@ -108,7 +108,7 @@ def get_client(name, signals, *args, **kwargs):
     return client
 
 
-class MqttProxy(object):
+class MqttProxy:
     '''
     Inspect class type to extract properties and methods.
 

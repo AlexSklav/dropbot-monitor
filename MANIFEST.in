@@ -4,3 +4,5 @@ graft src
 prune *.pyc
 include versioneer.py
 include src/dropbot_monitor/_version.py
+exclude .DS_Store
+recursive-exclude dropbot_monitor .DS_Store

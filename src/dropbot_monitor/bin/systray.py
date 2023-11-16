@@ -1,26 +1,28 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
-import functools as ft
-import logging
-import pkgutil
+# coding: utf-8
 import sys
+import jinja2
+import mistune
+import asyncio
+import pkgutil
+import blinker
+import logging
+
+import numpy as np
+import pandas as pd
+import functools as ft
 
 try:
     import nest_asyncio
     nest_asyncio.apply()
 except ImportError:
     pass
+
 from PySide2 import QtGui, QtCore, QtWidgets
-from base_node_rpc.async import asyncio
+
 from dropbot import EVENT_ENABLE, EVENT_CHANNELS_UPDATED, EVENT_SHORTS_DETECTED
 from logging_helpers import _L
-import blinker
+
 import dropbot_monitor as dbm
-import jinja2
-import mistune
-import numpy as np
-import pandas as pd
-import si_prefix as si
 
 from ..invoker import Invoker
 
