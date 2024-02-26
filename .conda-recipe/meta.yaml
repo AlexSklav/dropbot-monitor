@@ -17,7 +17,7 @@ build:
 requirements:
   host:
     - pip
-    - python >=3.8
+    - python >=3.6
 
   run:
     - asyncio-helpers
@@ -31,7 +31,7 @@ requirements:
     - paho-mqtt
     - pandas
     - pyside2
-    - python >=3.8
+    - python >=3.6
     - si-prefix
     - trollius  # [py<34]
 
